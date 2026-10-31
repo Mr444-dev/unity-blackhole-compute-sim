@@ -31,6 +31,7 @@ namespace OmniTwin.BlackholeSimulation.Systems
         private int _resetKernel = -1;
         private int _integrateKernel = -1;
         private uint _frameCount;
+        private SimulationBackend _activeBackend;
         private bool _initialized;
 
         public BlackholeSimulationSettings Settings => settings;
@@ -42,6 +43,7 @@ namespace OmniTwin.BlackholeSimulation.Systems
         public GraphicsBuffer ParticleBuffer => _particleBuffer;
         public AccretionDiskController Disk => _disk;
         public bool GpuComputeAvailable => IsGpuSupported();
+        public bool IsReadyForBenchmark => _initialized && renderCamera != null && _disk != null && _disk.IsReadyForRendering;
 
         private void OnEnable()
         {
@@ -58,17 +60,23 @@ namespace OmniTwin.BlackholeSimulation.Systems
 
             float deltaTime = (simulateWhilePaused ? Time.unscaledDeltaTime : Time.deltaTime) * settings.timeScale;
             long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-            long startTicks = Stopwatch.GetTimestamp();
+            SimulationBackend selectedBackend = backend == SimulationBackend.GPUCompute && !IsGpuSupported()
+                ? SimulationBackend.CPUBurstJobs
+                : backend;
+            if (selectedBackend != _activeBackend)
+            {
+                int currentCount = _particles.Length;
+                backend = selectedBackend;
+                InitializeSimulation(currentCount);
+            }
 
-            if (backend == SimulationBackend.GPUCompute && IsGpuSupported())
+            if (backend == SimulationBackend.GPUCompute)
             {
                 _disk.RenderGpu(renderCamera, gravityCompute, _resetKernel, _integrateKernel, _particleBuffer, settings, _frameCount, deltaTime);
+                LastDispatchMilliseconds = _disk.LastGpuDispatchMilliseconds;
             }
             else
             {
-                if (backend == SimulationBackend.GPUCompute)
-                    backend = SimulationBackend.CPUBurstJobs;
-
                 var job = new ParticleIntegrationJob
                 {
                     Particles = _particles,
@@ -78,13 +86,14 @@ namespace OmniTwin.BlackholeSimulation.Systems
                     DiskHalfThickness = settings.diskHalfThickness,
                     FrameCount = _frameCount
                 };
+                long jobStartTicks = Stopwatch.GetTimestamp();
                 _jobHandle = job.Schedule(_particles.Length, 128);
                 _jobHandle.Complete();
+                LastDispatchMilliseconds = (Stopwatch.GetTimestamp() - jobStartTicks) * 1000.0 / Stopwatch.Frequency;
                 _particleBuffer.SetData(_particles);
                 _disk.RenderCpu(renderCamera, _particles, _particleBuffer, settings);
             }
 
-            LastDispatchMilliseconds = (Stopwatch.GetTimestamp() - startTicks) * 1000.0 / Stopwatch.Frequency;
             LastManagedAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
             _frameCount++;
         }
@@ -128,6 +137,7 @@ namespace OmniTwin.BlackholeSimulation.Systems
                 _integrateKernel = gravityCompute.FindKernel("IntegrateAndCull");
             }
 
+            _activeBackend = backend;
             _initialized = true;
         }
 

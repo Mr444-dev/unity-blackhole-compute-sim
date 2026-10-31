@@ -23,7 +23,8 @@ namespace OmniTwin.BlackholeSimulation.Core
             float maxRadius = math.max(outerRadius, innerRadius + rs * 0.1f);
             float thickness = math.max(diskHalfThickness, 0f);
             float e = math.clamp(eccentricity, 0f, 0.8f);
-            var gravity = new RelativisticGravityMath(gravitationalParameter, rs, softening, 0.05f);
+            float maximumFeasibleEccentricity = (maxRadius - innerRadius) / (maxRadius + innerRadius);
+            e = math.min(e, math.max(maximumFeasibleEccentricity, 0f));
             var particles = new NativeArray<Particle>(safeCount, allocator, NativeArrayOptions.UninitializedMemory);
 
             for (int i = 0; i < safeCount; i++)
@@ -34,15 +35,21 @@ namespace OmniTwin.BlackholeSimulation.Core
                 float verticalSample = (RelativisticGravityMath.Hash01(baseHash ^ 0x85ebca6bu) * 2f - 1f) * thickness;
                 float anomaly = RelativisticGravityMath.Hash01(baseHash ^ 0xc2b2ae35u) * (2f * math.PI);
 
-                // Uniform area density in the annulus; e=0 is an exact circular P-W orbit.
-                float radius = math.sqrt(math.lerp(innerRadius * innerRadius, maxRadius * maxRadius, radialSample));
-                float radialOffset = e * math.cos(anomaly);
-                float orbitalRadius = math.clamp(radius * (1f - radialOffset), innerRadius, maxRadius);
+                // Uniform area density over feasible semimajor axes keeps each turning point inside the annulus.
+                float minimumSemiMajorAxis = innerRadius / (1f - e);
+                float maximumSemiMajorAxis = maxRadius / (1f + e);
+                float semiMajorAxis = math.sqrt(math.lerp(minimumSemiMajorAxis * minimumSemiMajorAxis, maximumSemiMajorAxis * maximumSemiMajorAxis, radialSample));
+                float pericenter = semiMajorAxis * (1f - e);
+                float apocenter = semiMajorAxis * (1f + e);
+                float orbitalRadius = semiMajorAxis * (1f - e * math.cos(anomaly));
                 float sin = math.sin(angle);
                 float cos = math.cos(angle);
-                float circularSpeed = gravity.CircularSpeed(orbitalRadius);
-                float tangentialScale = math.sqrt(math.max(1f - e * e, 0f));
-                float radialSpeed = e * circularSpeed * math.sin(anomaly);
+                float angularMomentumSquared = 2f * gravitationalParameter * pericenter * pericenter * apocenter * apocenter /
+                                               ((pericenter + apocenter) * (pericenter - rs) * (apocenter - rs));
+                float orbitalEnergy = 0.5f * angularMomentumSquared / (pericenter * pericenter) - gravitationalParameter / (pericenter - rs);
+                float tangentialSpeed = math.sqrt(angularMomentumSquared) / orbitalRadius;
+                float radialSpeedSquared = math.max(0f, 2f * (orbitalEnergy + gravitationalParameter / (orbitalRadius - rs)) - tangentialSpeed * tangentialSpeed);
+                float radialSpeed = math.sqrt(radialSpeedSquared) * math.sign(sin);
                 float3 radial = new float3(cos, 0f, sin);
                 float3 tangent = new float3(-sin, 0f, cos);
 
@@ -50,7 +57,7 @@ namespace OmniTwin.BlackholeSimulation.Core
                 {
                     position = new float3(radial.x * orbitalRadius, verticalSample, radial.z * orbitalRadius),
                     temperature = math.lerp(12000f, 2800f, math.saturate((orbitalRadius - innerRadius) / (maxRadius - innerRadius))),
-                    velocity = tangent * (circularSpeed * tangentialScale) + radial * radialSpeed,
+                    velocity = tangent * tangentialSpeed + radial * radialSpeed,
                     flagsAndSeed = baseHash & 0x3fffffffu
                 };
             }

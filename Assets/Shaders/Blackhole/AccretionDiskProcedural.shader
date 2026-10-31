@@ -80,12 +80,20 @@ Shader "OmniTwin/Blackhole/Accretion Disk Procedural"
 
             float3 Blackbody(float temperature)
             {
-                float t = clamp(temperature, 1000.0, 20000.0) / 100.0;
-                float3 color;
-                color.r = t <= 66.0 ? 1.0 : saturate(1.292936 * pow(t - 60.0, -0.133205));
-                color.g = t <= 66.0 ? saturate(0.390082 * log(max(t, 1.0)) - 0.631841) : saturate(1.129891 * pow(t - 60.0, -0.075515));
-                color.b = t >= 66.0 ? 1.0 : (t <= 19.0 ? 0.0 : saturate(0.543207 * log(max(t - 10.0, 1.0)) - 1.196254));
-                return color;
+                const float3 blackbodyLut[8] =
+                {
+                    float3(1.0, 0.035, 0.0),
+                    float3(1.0, 0.31, 0.06),
+                    float3(1.0, 0.63, 0.36),
+                    float3(1.0, 0.84, 0.70),
+                    float3(0.83, 0.87, 1.0),
+                    float3(0.67, 0.78, 1.0),
+                    float3(0.55, 0.69, 1.0),
+                    float3(0.48, 0.63, 1.0)
+                };
+                float lutPosition = saturate((clamp(temperature, 1000.0, 20000.0) - 1000.0) / 19000.0) * 7.0;
+                uint lutIndex = min((uint)lutPosition, 6u);
+                return lerp(blackbodyLut[lutIndex], blackbodyLut[lutIndex + 1], frac(lutPosition));
             }
 
             half4 Frag(Varyings input) : SV_Target

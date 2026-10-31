@@ -13,6 +13,7 @@ Shader "OmniTwin/Blackhole/Gravitational Lensing"
             HLSLPROGRAM
             #pragma vertex Vert
             #pragma fragment Frag
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 
             float4 _BlackholeLensingCenter;   // viewport xy, shadow radius, aspect ratio

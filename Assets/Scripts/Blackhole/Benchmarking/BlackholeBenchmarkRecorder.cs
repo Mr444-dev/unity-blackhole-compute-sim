@@ -51,6 +51,12 @@ namespace OmniTwin.BlackholeSimulation.Benchmarking
                 yield break;
             }
 
+            if (!simulation.IsReadyForBenchmark)
+            {
+                Debug.LogError("Assign the simulation camera and accretion-disk material before running the benchmark.", this);
+                yield break;
+            }
+
             _rows = new BenchmarkRow[PopulationCount * BackendCount];
             int rowIndex = 0;
             for (int backendIndex = 0; backendIndex < BackendCount; backendIndex++)

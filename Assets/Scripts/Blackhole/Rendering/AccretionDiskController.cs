@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Mathematics;
+using System.Diagnostics;
 using UnityEngine;
 using UnityEngine.Rendering;
 using OmniTwin.BlackholeSimulation.Core;
@@ -45,11 +46,14 @@ namespace OmniTwin.BlackholeSimulation.Rendering
         private uint _cpuVisibleCount;
         private float _speedOfLight = 1f;
 
+        public double LastGpuDispatchMilliseconds { get; private set; }
+
         /// <summary>📈 Visible count known without readback on the CPU backend.</summary>
         public uint CpuVisibleCount => _cpuVisibleCount;
 
         /// <summary>🧾 GPU indirect argument buffer; benchmark snapshots may read it asynchronously.</summary>
         public GraphicsBuffer IndirectArguments => _indirectArguments;
+        public bool IsReadyForRendering => particleMaterial != null && _visibleIndexBuffer != null && _indirectArguments != null;
 
         private void OnDestroy() => ReleaseBuffers();
 
@@ -75,7 +79,10 @@ namespace OmniTwin.BlackholeSimulation.Rendering
             float deltaTime)
         {
             if (!ReadyToRender(camera, particleBuffer) || compute == null)
+            {
+                LastGpuDispatchMilliseconds = 0.0;
                 return;
+            }
 
             UpdateFrustum(camera);
             _speedOfLight = Mathf.Sqrt(2f * settings.gravitationalParameter / Mathf.Max(settings.schwarzschildRadius, 1e-6f));
@@ -92,12 +99,14 @@ namespace OmniTwin.BlackholeSimulation.Rendering
             compute.SetVectorArray(FrustumPlanesId, _frustumPlanes);
 
             compute.SetBuffer(resetKernel, IndirectArgsId, _indirectArguments);
+            long dispatchStart = Stopwatch.GetTimestamp();
             compute.Dispatch(resetKernel, 1, 1, 1);
 
             compute.SetBuffer(integrateKernel, ParticleBufferId, particleBuffer);
             compute.SetBuffer(integrateKernel, VisibleIndicesId, _visibleIndexBuffer);
             compute.SetBuffer(integrateKernel, IndirectArgsId, _indirectArguments);
             compute.Dispatch(integrateKernel, Mathf.CeilToInt(_capacity / 256f), 1, 1);
+            LastGpuDispatchMilliseconds = (Stopwatch.GetTimestamp() - dispatchStart) * 1000.0 / Stopwatch.Frequency;
             _cpuVisibleCount = 0;
             Draw(camera, particleBuffer);
         }
@@ -105,7 +114,10 @@ namespace OmniTwin.BlackholeSimulation.Rendering
         public void RenderCpu(Camera camera, NativeArray<Particle> particles, GraphicsBuffer particleBuffer, BlackholeSimulationSettings settings)
         {
             if (!ReadyToRender(camera, particleBuffer) || !particles.IsCreated)
+            {
+                _cpuVisibleCount = 0;
                 return;
+            }
 
             UpdateFrustum(camera);
             _speedOfLight = Mathf.Sqrt(2f * settings.gravitationalParameter / Mathf.Max(settings.schwarzschildRadius, 1e-6f));

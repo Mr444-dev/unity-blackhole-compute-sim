@@ -41,7 +41,9 @@ namespace OmniTwin.BlackholeSimulation.Rendering
                 return;
 
             float shadowWorldRadius = 1.5f * Mathf.Sqrt(3f) * schwarzschildRadius;
-            float shadowViewportRadius = shadowWorldRadius / viewport.z * camera.projectionMatrix.m11 * 0.5f;
+            float shadowViewportRadius = camera.orthographic
+                ? shadowWorldRadius / (2f * camera.orthographicSize)
+                : shadowWorldRadius / viewport.z * camera.projectionMatrix.m11 * 0.5f;
             _pass.Setup(
                 _material,
                 new Vector4(viewport.x, viewport.y, shadowViewportRadius, (float)camera.pixelWidth / Mathf.Max(1, camera.pixelHeight)),

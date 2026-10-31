@@ -18,7 +18,7 @@ No representative hardware benchmark results are committed as project facts. Run
 
 ## 01 Particle population
 
-`ParticlePopulationGenerator` creates a persistent `NativeArray<Particle>` from a repeatable Wang-hash sequence. Radius sampling is uniform by annular area between the ISCO and the configured outer radius. The disk supports a vertical half-thickness and eccentricity perturbation. Zero eccentricity starts each particle at the Paczyński–Wiita circular speed:
+`ParticlePopulationGenerator` creates a persistent `NativeArray<Particle>` from a repeatable Wang-hash sequence. Radius sampling is uniform by annular area between the ISCO and the configured outer radius. The disk supports a vertical half-thickness and eccentricity. Eccentric particles use pericenter/apocenter bounds inside the annulus and initial tangential/radial velocity derived from equal specific energy at those two turning points in the Paczyński–Wiita potential. Zero eccentricity starts each particle at the circular speed:
 
 ```text
 r_ISCO = 3 r_s
@@ -64,7 +64,7 @@ The render path performs no CPU visibility readback. The CPU Burst backend uses 
 
 ## 04 Visual effects
 
-`AccretionDiskProcedural.shader` builds camera-facing quads from `SV_VertexID`, reads each visible particle from the structured buffer, evaluates relativistic Doppler beaming, and shifts its blackbody color by the Doppler factor. The velocity scale derives `c = sqrt(2GM/r_s)` from the configured simulation units, so the Doppler ratio remains meaningful when using normalized simulation values.
+`AccretionDiskProcedural.shader` builds camera-facing quads from `SV_VertexID`, reads each visible particle from the structured buffer, evaluates relativistic Doppler beaming, and shifts its blackbody color through a compact temperature LUT by the Doppler factor. The velocity scale derives `c = sqrt(2GM/r_s)` from the configured simulation units, so the Doppler ratio remains meaningful when using normalized simulation values.
 
 `BlackholeLensingFeature` is a URP `ScriptableRendererFeature` that records a fullscreen lensing pass in RenderGraph. It projects the black-hole transform into viewport space, estimates the Schwarzschild shadow radius, bends the source image, masks the shadow, and adds a photon-ring contribution.
 
@@ -96,7 +96,7 @@ The project avoids Assembly Definition files. Run **Tools → Blackhole Simulati
 3. Let the sweep finish. It warms each configuration, measures 120 frames by default, and covers 10k, 100k, and 250k particles on both backends.
 4. Read `blackhole-benchmarks.md` from `Application.persistentDataPath` and paste the table into the portfolio README.
 
-The report records frame time, CPU dispatch/step wall time, visible particle count, and bytes allocated on the simulation controller's main-thread update. Dispatch time is submission/schedule time, not GPU execution time; use Unity Profiler or a GPU capture tool for GPU timings. The harness performs one asynchronous argument-buffer readback per GPU benchmark case to capture its visible count. Gameplay rendering has no per-frame readback. GC values are measurements, not hard-coded claims: review the output on the shipping Unity version and target hardware.
+The report records frame time, CPU dispatch/schedule wall time, visible particle count, and bytes allocated on the simulation controller's main-thread update. Dispatch time is CPU submission/schedule time, not GPU execution time; use Unity Profiler or a GPU capture tool for GPU timings. Switching backends regenerates the same seeded initial state for a fair comparison. The harness performs one asynchronous argument-buffer readback per GPU benchmark case to capture its visible count. Gameplay rendering has no per-frame readback. GC values are measurements, not hard-coded claims: review the output on the shipping Unity version and target hardware.
 
 ## Repository map
 
