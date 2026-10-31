@@ -1,0 +1,125 @@
+#pragma kernel ResetIndirectArgs
+#pragma kernel IntegrateAndCull
+#pragma target 5.0
+
+struct Particle
+{
+    float3 position;
+    float temperature;
+    float3 velocity;
+    uint flagsAndSeed;
+};
+
+RWStructuredBuffer<Particle> _Particles;
+RWStructuredBuffer<uint> _VisibleIndices;
+RWByteAddressBuffer _IndirectArgs;
+
+uint _ParticleCount;
+uint _FrameCount;
+float _GM;
+float _Rs;
+float _Softening;
+float _DeltaTime;
+float _MaximumStep;
+float _OuterRadius;
+float _DiskHalfThickness;
+float3 _BlackholeOrigin;
+float4 _CameraFrustumPlanes[6];
+
+[numthreads(1, 1, 1)]
+void ResetIndirectArgs(uint3 dispatchId : SV_DispatchThreadID)
+{
+    _IndirectArgs.Store(0, 6);
+    _IndirectArgs.Store(4, 0);
+    _IndirectArgs.Store(8, 0);
+    _IndirectArgs.Store(12, 0);
+}
+
+uint WangHash(uint value)
+{
+    value = (value ^ 61u) ^ (value >> 16);
+    value *= 9u;
+    value ^= value >> 4;
+    value *= 0x27d4eb2du;
+    value ^= value >> 15;
+    return value;
+}
+
+float Hash01(uint value)
+{
+    return (WangHash(value) & 0x00ffffffu) * (1.0 / 16777216.0);
+}
+
+float3 Acceleration(float3 position)
+{
+    float radiusSquared = max(dot(position, position), 1e-12);
+    float radius = sqrt(radiusSquared);
+    float denominator = max(radius - _Rs, max(_Softening, 1e-6));
+    return -position * rsqrt(radiusSquared) * (_GM / (denominator * denominator));
+}
+
+float CircularSpeed(float radius)
+{
+    float safeRadius = max(radius, _Rs + max(_Softening, 1e-6));
+    return sqrt(_GM * safeRadius) / max(safeRadius - _Rs, max(_Softening, 1e-6));
+}
+
+void RecycleParticle(uint id, inout Particle particle)
+{
+    uint hash = WangHash(id + _FrameCount + particle.flagsAndSeed);
+    float angle = Hash01(hash ^ 0xa511e9b3u) * 6.28318530718;
+    float radius = _OuterRadius * lerp(0.96, 1.0, Hash01(hash));
+    float vertical = (Hash01(hash ^ 0x63d83595u) * 2.0 - 1.0) * _DiskHalfThickness;
+    float sineValue = sin(angle);
+    float cosineValue = cos(angle);
+    float3 radial = float3(cosineValue, 0.0, sineValue);
+    float3 tangent = float3(-sineValue, 0.0, cosineValue);
+    particle.position = float3(radial.x * radius, vertical, radial.z * radius);
+    particle.velocity = tangent * CircularSpeed(radius);
+    particle.temperature = 2800.0;
+    particle.flagsAndSeed = hash & 0x3fffffffu;
+}
+
+bool IsVisible(float3 worldPosition)
+{
+    [unroll]
+    for (uint planeIndex = 0; planeIndex < 6; planeIndex++)
+    {
+        if (dot(_CameraFrustumPlanes[planeIndex].xyz, worldPosition) + _CameraFrustumPlanes[planeIndex].w < 0.0)
+            return false;
+    }
+    return true;
+}
+
+[numthreads(256, 1, 1)]
+void IntegrateAndCull(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint id = dispatchId.x;
+    if (id >= _ParticleCount)
+        return;
+
+    Particle particle = _Particles[id];
+    float dt = isfinite(_DeltaTime) ? min(max(_DeltaTime, 0.0), max(_MaximumStep, 1e-6)) : 0.0;
+    if (!all(isfinite(particle.position)) || !all(isfinite(particle.velocity)))
+    {
+        RecycleParticle(id, particle);
+    }
+    else if (dt > 0.0)
+    {
+        float3 acceleration0 = Acceleration(particle.position);
+        particle.position += particle.velocity * dt + 0.5 * acceleration0 * dt * dt;
+        float3 acceleration1 = Acceleration(particle.position);
+        particle.velocity += 0.5 * (acceleration0 + acceleration1) * dt;
+    }
+
+    if (!all(isfinite(particle.position)) || !all(isfinite(particle.velocity)) || dot(particle.position, particle.position) <= _Rs * _Rs)
+        RecycleParticle(id, particle);
+
+    _Particles[id] = particle;
+    if (IsVisible(particle.position + _BlackholeOrigin))
+    {
+        uint visibleIndex;
+        _IndirectArgs.InterlockedAdd(4, 1, visibleIndex);
+        _VisibleIndices[visibleIndex] = id;
+    }
+}
