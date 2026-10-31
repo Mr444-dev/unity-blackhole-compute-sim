@@ -1,6 +1,8 @@
-# Unity Blackhole Compute Sim
+# Unity Black Hole Compute Simulation
 
-An engineering-focused black-hole accretion-disk simulation for Unity 6 and URP. The implementation is organized around the same four systems shown in the portfolio Engineering X-Ray and can switch between a Burst job backend and a GPU compute backend.
+A Unity 6 and URP engineering prototype for a black-hole accretion disk. It explores deterministic particle populations, Paczyński–Wiita gravity, a Burst CPU backend, GPU compute integration and culling, procedural relativistic shading, and a RenderGraph lensing effect. The source is organized around the four systems in the portfolio Engineering X-Ray.
+
+**Status:** the four systems, checks, and benchmark harness are present in source. In the live editor session used for this audit, the benchmark harness and test/menu scripts were absent from active compilation inputs. The repository also needs a configured demo scene and target-hardware runtime checks. See the [technical audit](docs/PROJECT_AUDIT.md) for findings and next steps. No unmeasured performance results are presented as facts.
 
 ## Engineering snapshot
 
@@ -76,27 +78,22 @@ The render path performs no CPU visibility readback. The CPU Burst backend uses 
 4. Assign the active camera to **Render Camera** or tag the camera `MainCamera`.
 5. Set population and simulation values in the controller. The default normalized scale is `GM = 1`, `r_s = 0.25`, and `r_max = 12`.
 6. To enable lensing, add **Blackhole Lensing Feature** to the active URP Renderer Data, assign `BlackholeLensing.shader`, set the black-hole transform and the same `r_s`, then enable the feature.
-7. Select `GPUCompute` on compute-capable hardware; the component falls back to `CPUBurstJobs` if compute or indirect-argument support is unavailable.
+7. Select `GPUCompute` on compute-capable hardware. The simulation can switch to `CPUBurstJobs`, but rendering still uses indirect draws; this is not yet a complete fallback for platforms without compute-shader or indirect-draw support.
 
 The project version is Unity 6000.6.3f1, and the manifest pins URP 17.6.0.
 
 ## Tests
 
-The project avoids Assembly Definition files. Run **Tools → Blackhole Simulation → Run Edit Mode Verification** in the Unity Editor to check:
-
-- exact particle stride and field offsets,
-- stable circular orbit radius and energy at `r > 3r_s`,
-- horizon capture for inward sub-ISCO motion,
-- deterministic seeded generation and finite state under an extreme timestep.
+The repository contains assertion checks for particle stride, orbital stability, horizon capture, deterministic seeding, and finite state after an extreme timestep. The live editor used for this audit excluded the test file and menu runner from its active compilation inputs, so these checks were unavailable. Repair test compilation/discovery before relying on them; see the [audit](docs/PROJECT_AUDIT.md).
 
 ## Benchmark reproduction
 
-1. Complete the Unity setup above and add `BlackholeBenchmarkRecorder` to a GameObject.
+1. Repair the benchmark script's compilation inclusion as described in the audit. Then complete the Unity setup above and add `BlackholeBenchmarkRecorder` to a GameObject.
 2. Assign the simulation controller. Keep **Auto Run On Start** enabled or call `RunBenchmark()` from a UI button.
 3. Let the sweep finish. It warms each configuration, measures 120 frames by default, and covers 10k, 100k, and 250k particles on both backends.
 4. Read `blackhole-benchmarks.md` from `Application.persistentDataPath` and paste the table into the portfolio README.
 
-The report records frame time, CPU dispatch/schedule wall time, visible particle count, and bytes allocated on the simulation controller's main-thread update. Dispatch time is CPU submission/schedule time, not GPU execution time; use Unity Profiler or a GPU capture tool for GPU timings. Switching backends regenerates the same seeded initial state for a fair comparison. The harness performs one asynchronous argument-buffer readback per GPU benchmark case to capture its visible count. Gameplay rendering has no per-frame readback. GC values are measurements, not hard-coded claims: review the output on the shipping Unity version and target hardware.
+The report records frame time, CPU dispatch/schedule wall time, visible particle count, and bytes allocated on the simulation controller's main-thread update. Dispatch time is CPU submission/schedule time, not GPU execution time; use Unity Profiler or a GPU capture tool for GPU timings. Switching backends regenerates the same seeded initial state for a fair comparison. The harness performs one asynchronous argument-buffer readback per GPU benchmark case to capture its visible count. If that readback fails, the current implementation can report zero as if it were a measured count; do not rely on the GPU visible-count column until this error case is handled. Gameplay rendering has no per-frame readback. GC values are measurements, not hard-coded claims: review the output on the shipping Unity version and target hardware.
 
 ## Repository map
 
