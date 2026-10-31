@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-10-31
 
-**Revision:** `328e3a5` (`main`)
+**Code revision reviewed:** `328e3a5`
 
 **Project:** Unity 6000.6.3f1, URP 17.6.0
 
