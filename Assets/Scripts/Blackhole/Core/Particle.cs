@@ -26,8 +26,17 @@ namespace OmniTwin.BlackholeSimulation.Core
     public enum ParticleCountPreset
     {
         TenThousand = 10000,
+        TwentyFiveThousand = 25000,
         OneHundredThousand = 100000,
         TwoHundredFiftyThousand = 250000,
         FiveHundredThousand = 500000
+    }
+
+    /// <summary>🚩 High bits in the particle seed word reserved for transient TDE state.</summary>
+    public static class ParticleFlags
+    {
+        public const uint TidalDisruption = 0x80000000u;
+        public const uint TidalCaptureRegistered = 0x40000000u;
+        public const uint SeedMask = 0x3fffffffu;
     }
 }

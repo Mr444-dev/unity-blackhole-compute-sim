@@ -20,6 +20,12 @@ namespace OmniTwin.BlackholeSimulation.Core
         {
             Particle particle = Particles[index];
             bool captured = Gravity.Integrate(ref particle, DeltaTime);
+            if ((particle.flagsAndSeed & ParticleFlags.TidalDisruption) != 0 &&
+                ((particle.flagsAndSeed & ParticleFlags.TidalCaptureRegistered) == 0) &&
+                (captured || math.dot(particle.position, particle.position) <= 2.25f * Gravity.SchwarzschildRadius * Gravity.SchwarzschildRadius))
+            {
+                particle.flagsAndSeed |= ParticleFlags.TidalCaptureRegistered;
+            }
             if (captured)
                 Recycle(ref particle, (uint)index);
             Particles[index] = particle;
@@ -39,7 +45,8 @@ namespace OmniTwin.BlackholeSimulation.Core
             particle.position = new float3(radial.x * radius, vertical, radial.z * radius);
             particle.velocity = tangent * Gravity.CircularSpeed(radius);
             particle.temperature = 2800f;
-            particle.flagsAndSeed = hash & 0x3fffffffu;
+            particle.flagsAndSeed = (hash & ParticleFlags.SeedMask) |
+                                    (particle.flagsAndSeed & ParticleFlags.TidalCaptureRegistered);
         }
     }
 }

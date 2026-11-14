@@ -1,6 +1,5 @@
 using UnityEditor;
 using UnityEngine;
-using OmniTwin.BlackholeSimulation.Tests;
 
 namespace OmniTwin.BlackholeSimulation.Editor
 {
@@ -10,8 +9,11 @@ namespace OmniTwin.BlackholeSimulation.Editor
         [MenuItem("Tools/Blackhole Simulation/Run Edit Mode Verification")]
         public static void RunAll()
         {
-            BlackholeSimulationTests.RunAll();
-            Debug.Log("Blackhole Simulation edit-mode verification passed.");
+            BlackholePortfolioSetup.RunEditModeChecks(passed =>
+            {
+                if (!passed)
+                    Debug.LogError("Blackhole Simulation edit-mode verification failed. See the Test Runner results.");
+            });
         }
     }
 }

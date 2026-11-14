@@ -35,9 +35,10 @@ namespace OmniTwin.BlackholeSimulation.Core
                 float verticalSample = (RelativisticGravityMath.Hash01(baseHash ^ 0x85ebca6bu) * 2f - 1f) * thickness;
                 float anomaly = RelativisticGravityMath.Hash01(baseHash ^ 0xc2b2ae35u) * (2f * math.PI);
 
-                // Uniform area density over feasible semimajor axes keeps each turning point inside the annulus.
+                // Bias the area sample inward so the hot inner ring carries more visual weight.
                 float minimumSemiMajorAxis = innerRadius / (1f - e);
                 float maximumSemiMajorAxis = maxRadius / (1f + e);
+                radialSample = math.pow(radialSample, 1.8f);
                 float semiMajorAxis = math.sqrt(math.lerp(minimumSemiMajorAxis * minimumSemiMajorAxis, maximumSemiMajorAxis * maximumSemiMajorAxis, radialSample));
                 float pericenter = semiMajorAxis * (1f - e);
                 float apocenter = semiMajorAxis * (1f + e);

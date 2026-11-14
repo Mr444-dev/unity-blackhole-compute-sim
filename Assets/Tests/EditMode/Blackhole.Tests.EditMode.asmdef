@@ -1,0 +1,14 @@
+{
+  "name": "Blackhole.Tests.EditMode",
+  "references": [
+    "OmniTwin.BlackholeSimulation",
+    "Unity.Collections",
+    "Unity.Mathematics"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}

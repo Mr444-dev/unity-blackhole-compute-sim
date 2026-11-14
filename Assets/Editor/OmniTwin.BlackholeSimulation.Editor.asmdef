@@ -1,0 +1,22 @@
+{
+  "name": "OmniTwin.BlackholeSimulation.Editor",
+  "rootNamespace": "OmniTwin.BlackholeSimulation.Editor",
+  "references": [
+    "OmniTwin.BlackholeSimulation",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

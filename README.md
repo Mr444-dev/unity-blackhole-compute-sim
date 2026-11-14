@@ -1,107 +1,90 @@
 # Unity Black Hole Compute Simulation
 
-A Unity 6 and URP engineering prototype for a black-hole accretion disk. It explores deterministic particle populations, Paczyński–Wiita gravity, a Burst CPU backend, GPU compute integration and culling, procedural relativistic shading, and a RenderGraph lensing effect. The source is organized around the four systems in the portfolio Engineering X-Ray.
+A Unity 6 URP prototype for a GPU-driven black-hole accretion disk. The project combines deterministic particle populations, Paczynski-Wiita gravity, a Burst CPU backend, GPU compute integration and culling, velocity-stretched HDR billboards, and a stylized RenderGraph lensing pass.
 
-**Status:** the four systems, checks, and benchmark harness are present in source. In the live editor session used for this audit, the benchmark harness and test/menu scripts were absent from active compilation inputs. The repository also needs a configured demo scene and target-hardware runtime checks. See the [technical audit](docs/PROJECT_AUDIT.md) for findings and next steps. No unmeasured performance results are presented as facts.
+**Current build:** Unity 6000.6.3f1 with URP 17.6.0. The default scene uses the GPU Compute backend and 100,000 particles. All five EditMode checks pass. The six-case benchmark below was captured in the Unity Editor on the listed Windows/DX12 hardware.
+
+## Portfolio capture
+
+![Clean 1920 by 1080 Game View of the black-hole simulation](docs/screenshots/blackhole-game-view.png)
+
+The PNG is a 1920 x 1080 capture of the camera output with the telemetry panel composited at its Game View position. It excludes Unity Editor chrome.
 
 ## Engineering snapshot
 
 | Property | Value |
 |---|---:|
 | Particle record | 32 bytes, 16-byte field groups |
-| Rendering | GPU visible-index list + `RenderPrimitivesIndirect` |
-| GPU culling | 6 camera frustum planes, integrated in the compute dispatch |
+| Rendering | GPU visible-index list and indirect draw; CPU procedural draw or dynamic mesh fallback |
+| GPU culling | Six camera frustum planes in the compute dispatch |
 | CPU backend | Burst `IJobParallelFor`, `FloatMode.Fast`, `FloatPrecision.Low` |
-| Gravity | Paczyński–Wiita pseudo-Newtonian potential, velocity Verlet |
-| Population presets | 10k, 100k, 250k, 500k |
-| Benchmark sweep | 10k, 100k, 250k × CPU Burst and GPU compute |
+| Gravity | Paczynski-Wiita pseudo-Newtonian potential, velocity Verlet |
+| Population presets | 10k, 25k browser fallback, 100k, 250k, 500k |
+| Default backend | GPU Compute on desktop; CPU Burst + mesh on WebGL |
+| Benchmark cases | 10k, 100k, 250k on CPU Burst and GPU Compute |
 
-No representative hardware benchmark results are committed as project facts. Run the harness on the target machine to generate a measured table for the README or portfolio.
+## Visual setup
 
-## 01 Particle population
+The demo camera sits at `(0, 3.2, -18.5)` with a 42-degree field of view. The configured Schwarzschild radius is `0.65`, the ISCO is `3 r_s = 1.95`, the outer disk radius is `11`, and the disk half-thickness is `0.10`. Particle radii are biased toward the hot inner disk with a power-law sample.
 
-`ParticlePopulationGenerator` creates a persistent `NativeArray<Particle>` from a repeatable Wang-hash sequence. Radius sampling is uniform by annular area between the ISCO and the configured outer radius. The disk supports a vertical half-thickness and eccentricity. Eccentric particles use pericenter/apocenter bounds inside the annulus and initial tangential/radial velocity derived from equal specific energy at those two turning points in the Paczyński–Wiita potential. Zero eccentricity starts each particle at the circular speed:
+The procedural disk shader aligns each soft billboard with projected particle velocity, stretches it with speed, and applies gravitational redshift, Lorentz time dilation, and relativistic Doppler beaming to the emitted blackbody color. The same radiative-transfer model runs in the CPU dynamic-mesh fallback. The renderer feature adds screen-space gravitational bending, a dark shadow mask, and photon-ring glow. A procedural starfield skybox provides contrast. The global URP Volume uses Bloom (`threshold 0.9`, `intensity 1.25`, `scatter 0.68`) and ACES tonemapping. Lensing is a stylized screen-space effect rather than a full general-relativistic ray tracer.
 
-```text
-r_ISCO = 3 r_s
-v_circ = sqrt(GM r) / (r - r_s)
-```
+During Play Mode, click the disk or press **Space** to launch a 4,096-particle stellar body on a plunging orbit. The particles integrate through the same Paczynski-Wiita potential as the disk and develop a tidal stream; crossing `1.5 r_s` triggers a brief pair of polar jet beams. Launches have a 10-second cooldown. Hold **right mouse** and drag, use **WASD** or arrow keys to orbit, and scroll to zoom. These controls are suppressed during the benchmark and screenshot capture flows.
 
-The `Particle` layout is explicitly packed and sized for a 32-byte stride:
+On WebGL, or when compute and indirect drawing are unavailable, the simulation starts with the CPU Burst backend and 25,000 particles. It renders through the dynamic-mesh fallback with larger streaks. In the Editor, choose **Tools > Blackhole > 4. Build WebGL for itch.io** to switch to the WebGL target, compile the browser-specific fallback, and build `Builds/WebGL-ItchIo/` with Gzip compression, decompression fallback, and a 1280 x 720 default canvas. The Unity Editor's Web Build Support module must be installed.
 
-| Byte offset | Field | Size |
-|---:|---|---:|
-| 0 | `float3 position` | 12 B |
-| 12 | `float temperature` | 4 B |
-| 16 | `float3 velocity` | 12 B |
-| 28 | `uint flagsAndSeed` | 4 B |
+## Running and Inspecting in Unity Editor
 
-This produces two 16-byte groups, matching the HLSL `Particle` declaration without implicit padding. Particle and visible-index storage is allocated once per population configuration; normal simulation frames do not resize or allocate managed particle arrays.
+1. Open the project with Unity `6000.6.3f1` and let package import and script compilation finish.
+2. Open `Assets/Scenes/SampleScene.unity`. To rebuild the demo setup, choose **Tools > Blackhole > 1. Wire & Save Demo SampleScene**.
+3. Press **Play** and inspect the **Game** tab. The camera renders the simulation; the Scene tab shows the editor scene.
+4. Select **Blackhole Simulation** in the Hierarchy to inspect the `BlackholeSimulationController`. Its Backend and Population Preset fields can be changed in the Inspector. Stop and restart Play Mode after changing the population preset.
+5. To refresh the portfolio image, choose **Tools > Blackhole > 3. Capture 1080p Portfolio Screenshot**. The Editor waits for 60 warmup frames and writes `docs/screenshots/blackhole-game-view.png`.
+6. To verify and collect measurements, choose **Tools > Blackhole > 2. Run EditMode Checks & Export Benchmark Markdown**. The menu runs the EditMode checks, then the six-case Play Mode benchmark, writes `Blackhole-Benchmark-Results.md` to the repository root, and returns to Edit Mode.
 
-## 02 Gravitational attraction
+The telemetry HUD sits 14 pixels from the top and left edges and measures 310 x 164 pixels. It reports backend, population, CPU timings, GPU command submission time, main-thread GC allocation, TDE cooldown, and orbit controls. GPU visible-particle count is asynchronous; it is shown only when readback succeeds. GPU dispatch submission is CPU time spent issuing commands, not GPU execution time.
 
-`RelativisticGravityMath` and `BlackholeGravity.compute` use the Paczyński–Wiita potential
+## Measured benchmark
 
-```text
-Φ(r) = -GM / (r - r_s)
-a(r) = -GM / (r - r_s)² · r̂
-r_s = 2GM / c²
-```
+Captured on **NVIDIA GeForce GTX 1660 SUPER (Direct3D12)** with a **13th Gen Intel Core i3-13100F**. Each case used 30 warmup frames followed by 120 measured frames in the Unity Editor.
 
-The acceleration denominator is bounded by a configurable softening distance near the horizon. Both backends use the same velocity-Verlet sequence: evaluate acceleration, advance position, evaluate acceleration at the new position, then update velocity. The maximum integration step clamps long editor stalls to keep float32 state finite.
+**Capture condition:** Another Unity project was in Play Mode on the same machine during collection. Frame-time values include that concurrent editor workload and are not an isolated performance baseline.
 
-The event horizon is `r ≤ r_s`. The ISCO at `3r_s` is the marginally stable circular orbit; crossing inside it makes a circular orbit unstable, but is not itself an event-horizon capture. Particles are recycled only after crossing the horizon (or when invalid state is detected). Their outer feeding-boundary position, tangent, and seed are derived from particle ID, frame count, and prior seed with the same Wang hash on CPU and GPU.
+| Backend | Particles | Frame time (ms) | CPU integration (ms) | Total CPU step (ms) | GPU dispatch submission (ms) | Visible particles | Visible-count status | Managed GC alloc / frame (B) |
+|---|---:|---:|---:|---:|---:|---:|---|---:|
+| CPUBurstJobs | 10,000 | 65.855 | 0.966 | 1.819 | — | 9,991 | CPU culling | 0.0 |
+| CPUBurstJobs | 100,000 | 35.429 | 0.534 | 1.726 | — | 99,896 | CPU culling | 0.0 |
+| CPUBurstJobs | 250,000 | 40.096 | 0.908 | 5.079 | — | 249,717 | CPU culling | 0.0 |
+| GPUCompute | 10,000 | 42.807 | — | — | 0.063 | 9,989 | Valid | 0.0 |
+| GPUCompute | 100,000 | 44.746 | — | — | 0.039 | 99,895 | Valid | 0.0 |
+| GPUCompute | 250,000 | 36.754 | — | — | 0.047 | 249,719 | Valid | 0.0 |
 
-## 03 Accretion disk and GPU-driven culling
+CPU integration excludes culling and uploads. Total CPU step includes Burst integration, Burst culling, particle/index uploads, and draw submission. GPU dispatch submission is CPU wall time, not GPU execution time. Managed allocation measures bytes allocated on the simulation controller's main thread during each update. GPU visible counts are reported only when asynchronous readback succeeds.
 
-The GPU path uses `GraphicsBuffer.Target.Structured` for particles and visible indices and `GraphicsBuffer.Target.IndirectArguments` for the draw command. Each frame:
+The full generated report is [Blackhole-Benchmark-Results.md](Blackhole-Benchmark-Results.md). For hardware GPU timings, use Unity Profiler or a GPU capture tool.
 
-1. Reset the indirect draw argument count.
-2. Integrate and recycle each particle in 256-thread groups.
-3. Test world-space positions against six camera frustum planes.
-4. Atomically reserve an index with `InterlockedAdd` in the indirect argument buffer and append the particle index.
-5. Render six billboard vertices per visible particle through `Graphics.RenderPrimitivesIndirect`.
+## Simulation details
 
-The render path performs no CPU visibility readback. The CPU Burst backend uses the same state and draw layout, computes frustum visibility into a preallocated native array, and uploads visible indices for rendering.
+`ParticlePopulationGenerator` creates a persistent `NativeArray<Particle>` from a repeatable Wang-hash sequence. It biases radial sampling toward the ISCO, applies the configured vertical thickness and eccentricity, and initializes circular or eccentric velocities from the Paczynski-Wiita potential.
 
-## 04 Visual effects
+The CPU and compute backends use velocity Verlet with a bounded acceleration near the event horizon. Disk particles are recycled after crossing the horizon or when state becomes invalid; crossing inside the ISCO alone does not count as capture. The TDE segment additionally records the first inward crossing of `1.5 r_s` to trigger its capture flare. The GPU culling path appends visible particle indices without CPU readback. The CPU backend compacts visible particles in Burst jobs using preallocated native buffers.
 
-`AccretionDiskProcedural.shader` builds camera-facing quads from `SV_VertexID`, reads each visible particle from the structured buffer, evaluates relativistic Doppler beaming, and shifts its blackbody color through a compact temperature LUT by the Doppler factor. The velocity scale derives `c = sqrt(2GM/r_s)` from the configured simulation units, so the Doppler ratio remains meaningful when using normalized simulation values.
-
-`BlackholeLensingFeature` is a URP `ScriptableRendererFeature` that records a fullscreen lensing pass in RenderGraph. It projects the black-hole transform into viewport space, estimates the Schwarzschild shadow radius, bends the source image, masks the shadow, and adds a photon-ring contribution.
-
-## Setup in Unity
-
-1. Add a GameObject at the black-hole center. Add `BlackholeSimulationController` and `AccretionDiskController` to it.
-2. Assign `BlackholeGravity.compute` to **Gravity Compute**.
-3. Create a material using **OmniTwin/Blackhole/Accretion Disk Procedural** and assign it to **Particle Material**.
-4. Assign the active camera to **Render Camera** or tag the camera `MainCamera`.
-5. Set population and simulation values in the controller. The default normalized scale is `GM = 1`, `r_s = 0.25`, and `r_max = 12`.
-6. To enable lensing, add **Blackhole Lensing Feature** to the active URP Renderer Data, assign `BlackholeLensing.shader`, set the black-hole transform and the same `r_s`, then enable the feature.
-7. Select `GPUCompute` on compute-capable hardware. The simulation can switch to `CPUBurstJobs`, but rendering still uses indirect draws; this is not yet a complete fallback for platforms without compute-shader or indirect-draw support.
-
-The project version is Unity 6000.6.3f1, and the manifest pins URP 17.6.0.
+The packed particle layout is 32 bytes: `float3 position`, `float temperature`, `float3 velocity`, and `uint flagsAndSeed`. These fields form two 16-byte groups matching the HLSL structure.
 
 ## Tests
 
-The repository contains assertion checks for particle stride, orbital stability, horizon capture, deterministic seeding, and finite state after an extreme timestep. The live editor used for this audit excluded the test file and menu runner from its active compilation inputs, so these checks were unavailable. Repair test compilation/discovery before relying on them; see the [audit](docs/PROJECT_AUDIT.md).
-
-## Benchmark reproduction
-
-1. Repair the benchmark script's compilation inclusion as described in the audit. Then complete the Unity setup above and add `BlackholeBenchmarkRecorder` to a GameObject.
-2. Assign the simulation controller. Keep **Auto Run On Start** enabled or call `RunBenchmark()` from a UI button.
-3. Let the sweep finish. It warms each configuration, measures 120 frames by default, and covers 10k, 100k, and 250k particles on both backends.
-4. Read `blackhole-benchmarks.md` from `Application.persistentDataPath` and paste the table into the portfolio README.
-
-The report records frame time, CPU dispatch/schedule wall time, visible particle count, and bytes allocated on the simulation controller's main-thread update. Dispatch time is CPU submission/schedule time, not GPU execution time; use Unity Profiler or a GPU capture tool for GPU timings. Switching backends regenerates the same seeded initial state for a fair comparison. The harness performs one asynchronous argument-buffer readback per GPU benchmark case to capture its visible count. If that readback fails, the current implementation can report zero as if it were a measured count; do not rely on the GPU visible-count column until this error case is handled. Gameplay rendering has no per-frame readback. GC values are measurements, not hard-coded claims: review the output on the shipping Unity version and target hardware.
+The EditMode suite contains five checks for particle and indirect-argument layouts, deterministic finite population generation, stable circular orbits, and event-horizon capture. Run them through **Window > General > Test Runner > EditMode**, or use the combined verification and benchmark menu item above.
 
 ## Repository map
 
 ```text
-Assets/Scripts/Blackhole/Core/          particle layout, generator, gravity math, Burst job
-Assets/Scripts/Blackhole/Systems/       backend orchestration
-Assets/Scripts/Blackhole/Rendering/     indirect rendering and URP RenderGraph lensing
-Assets/Scripts/Blackhole/Benchmarking/  automated sweep and Markdown export
-Assets/Shaders/Blackhole/               compute integration, procedural disk, lensing shader
-Assets/Tests/EditMode/                  deterministic edit-mode verification checks
+Assets/Scripts/Blackhole/Core/          particle layout, generator, and gravity math
+Assets/Scripts/Blackhole/Systems/       simulation orchestration, TDE interaction, and benchmark recorder
+Assets/Scripts/Blackhole/Rendering/     culling, procedural/fallback rendering, orbit camera, and RenderGraph lensing
+Assets/Scripts/Blackhole/UI/            runtime telemetry HUD
+Assets/Shaders/Blackhole/               compute integration and rendering shaders
+Assets/Tests/EditMode/                  EditMode verification checks
+Assets/Editor/                          scene setup, screenshot capture, and benchmark tools
 ```
+
+The project is distributed under the [MIT License](LICENSE).

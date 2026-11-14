@@ -2,15 +2,17 @@ using System;
 using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Mathematics;
-using UnityEngine.Assertions;
+using UnityEngine;
+using NUnit.Framework;
 using OmniTwin.BlackholeSimulation.Core;
 
 namespace OmniTwin.BlackholeSimulation.Tests
 {
-    /// <summary>🧪 Deterministic edit-mode verification checks without adding an assembly definition.</summary>
-    public static class BlackholeSimulationTests
+    /// <summary>🧪 Deterministic edit-mode verification checks discovered by Unity Test Runner.</summary>
+    public sealed class BlackholeSimulationTests
     {
-        public static void ParticleStrideIsGpuAligned()
+        [Test]
+        public void ParticleStrideIsGpuAligned()
         {
             Assert.AreEqual(Particle.StrideBytes, Marshal.SizeOf(typeof(Particle)), "C# and HLSL particle stride must remain 32 bytes.");
             Assert.AreEqual(0, Marshal.OffsetOf(typeof(Particle), nameof(Particle.position)).ToInt32());
@@ -19,7 +21,8 @@ namespace OmniTwin.BlackholeSimulation.Tests
             Assert.AreEqual(28, Marshal.OffsetOf(typeof(Particle), nameof(Particle.flagsAndSeed)).ToInt32());
         }
 
-        public static void StableCircularOrbitConservesRadiusAndEnergy()
+        [Test]
+        public void StableCircularOrbitConservesRadiusAndEnergy()
         {
             const float gm = 1f;
             const float rs = 0.25f;
@@ -42,7 +45,8 @@ namespace OmniTwin.BlackholeSimulation.Tests
             Assert.IsTrue(math.abs(finalEnergy - initialEnergy) < 0.01f, "Velocity-Verlet orbital energy drift exceeded tolerance.");
         }
 
-        public static void SubIscoInfallCrossesTheEventHorizon()
+        [Test]
+        public void SubIscoInfallCrossesTheEventHorizon()
         {
             const float rs = 0.25f;
             var gravity = new RelativisticGravityMath(1f, rs, 0.005f, 0.001f);
@@ -58,7 +62,8 @@ namespace OmniTwin.BlackholeSimulation.Tests
             Assert.IsTrue(captured, "An inward radial orbit inside the ISCO should eventually cross r_s.");
         }
 
-        public static void PopulationGenerationIsDeterministicAndFinite()
+        [Test]
+        public void PopulationGenerationIsDeterministicAndFinite()
         {
             NativeArray<Particle> first = ParticlePopulationGenerator.Create(4096, 81, 1f, 0.25f, 8f, 0.2f, 0.12f, 0.01f, Allocator.Temp);
             NativeArray<Particle> second = ParticlePopulationGenerator.Create(4096, 81, 1f, 0.25f, 8f, 0.2f, 0.12f, 0.01f, Allocator.Temp);
@@ -83,12 +88,10 @@ namespace OmniTwin.BlackholeSimulation.Tests
             }
         }
 
-        public static void RunAll()
+        [Test]
+        public void IndirectArgumentsMatchTheFourUintComputeLayout()
         {
-            ParticleStrideIsGpuAligned();
-            StableCircularOrbitConservesRadiusAndEnergy();
-            SubIscoInfallCrossesTheEventHorizon();
-            PopulationGenerationIsDeterministicAndFinite();
+            Assert.AreEqual(4 * sizeof(uint), GraphicsBuffer.IndirectDrawArgs.size);
         }
     }
 }

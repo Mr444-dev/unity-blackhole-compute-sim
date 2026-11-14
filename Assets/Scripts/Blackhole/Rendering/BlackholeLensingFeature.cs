@@ -3,6 +3,8 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.RenderGraphModule.Util;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.SceneManagement;
+using OmniTwin.BlackholeSimulation.Systems;
 
 namespace OmniTwin.BlackholeSimulation.Rendering
 {
@@ -10,17 +12,20 @@ namespace OmniTwin.BlackholeSimulation.Rendering
     public sealed class BlackholeLensingFeature : ScriptableRendererFeature
     {
         [SerializeField] private Shader lensingShader;
-        [SerializeField] private Transform blackhole;
-        [SerializeField, Min(0.0001f)] private float schwarzschildRadius = 0.25f;
-        [SerializeField, Range(0f, 2f)] private float lensingStrength = 0.7f;
-        [SerializeField, Range(0f, 3f)] private float photonRingIntensity = 1f;
+        [SerializeField, Range(0f, 2f)] private float lensingStrength = 1.15f;
+        [SerializeField, Range(0f, 3f)] private float photonRingIntensity = 2.1f;
         [SerializeField] private RenderPassEvent injectionPoint = RenderPassEvent.AfterRenderingTransparents;
 
         private Material _material;
         private LensingPass _pass;
+        private BlackholeSimulationController _simulation;
+        private Transform _blackhole;
+        private bool _searchedForBlackhole;
 
         public override void Create()
         {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneLoaded += OnSceneLoaded;
             CoreUtils.Destroy(_material);
             _material = lensingShader != null ? CoreUtils.CreateEngineMaterial(lensingShader) : null;
             _pass = new LensingPass { renderPassEvent = injectionPoint };
@@ -29,17 +34,25 @@ namespace OmniTwin.BlackholeSimulation.Rendering
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            if (_material == null || blackhole == null)
+            if (_blackhole == null && !_searchedForBlackhole)
+            {
+                _simulation = Object.FindAnyObjectByType<BlackholeSimulationController>();
+                _blackhole = _simulation != null ? _simulation.transform : null;
+                _searchedForBlackhole = true;
+            }
+
+            if (_material == null || _blackhole == null)
                 return;
 
             Camera camera = renderingData.cameraData.camera;
             if (camera == null || camera.cameraType == CameraType.Preview || camera.cameraType == CameraType.Reflection)
                 return;
 
-            Vector3 viewport = camera.WorldToViewportPoint(blackhole.position);
+            Vector3 viewport = camera.WorldToViewportPoint(_blackhole.position);
             if (viewport.z <= camera.nearClipPlane)
                 return;
 
+            float schwarzschildRadius = _simulation != null ? _simulation.Settings.schwarzschildRadius : 0.25f;
             float shadowWorldRadius = 1.5f * Mathf.Sqrt(3f) * schwarzschildRadius;
             float shadowViewportRadius = camera.orthographic
                 ? shadowWorldRadius / (2f * camera.orthographicSize)
@@ -53,9 +66,17 @@ namespace OmniTwin.BlackholeSimulation.Rendering
 
         protected override void Dispose(bool disposing)
         {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
             CoreUtils.Destroy(_material);
             _material = null;
             _pass = null;
+        }
+
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            _blackhole = null;
+            _simulation = null;
+            _searchedForBlackhole = false;
         }
 
         private sealed class LensingPass : ScriptableRenderPass

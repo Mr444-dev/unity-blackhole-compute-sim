@@ -7,12 +7,12 @@ namespace OmniTwin.BlackholeSimulation.Core
     [Serializable]
     public sealed class BlackholeSimulationSettings
     {
-        [HideInInspector, Min(1)] public int particleCount = (int)ParticleCountPreset.TenThousand;
+        [HideInInspector, Min(1)] public int particleCount = (int)ParticleCountPreset.OneHundredThousand;
         [Min(0)] public int seed = 1847;
         [Min(0.0001f)] public float gravitationalParameter = 1f;
-        [Min(0.0001f)] public float schwarzschildRadius = 0.25f;
-        [Min(0.0001f)] public float outerRadius = 12f;
-        [Min(0f)] public float diskHalfThickness = 0.18f;
+        [Min(0.0001f)] public float schwarzschildRadius = 0.65f;
+        [Min(0.0001f)] public float outerRadius = 11f;
+        [Min(0f)] public float diskHalfThickness = 0.10f;
         [Range(0f, 0.8f)] public float eccentricity = 0.02f;
         [Min(0.0001f)] public float softening = 0.01f;
         [Min(0f)] public float timeScale = 1f;

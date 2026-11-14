@@ -1,38 +1,36 @@
 # Project audit
 
-**Reviewed:** 2026-10-31
+- **Reviewed:** 2026-11-01
+- **Base revision:** `c55ab0f`
+- **Project:** Unity 6000.6.3f1, URP 17.6.0
 
-**Code revision reviewed:** `328e3a5`
+This follow-up implements the P1/P2/P3 findings from the review of revision `328e3a5`. The active Unity Editor compiled the assemblies without errors, all five discovered EditMode tests passed, and the scene setup menu saved SampleScene with its simulation and material references assigned. The six-case CPU/GPU hardware benchmark is intentionally left for the Editor menu; no hardware measurements are claimed here.
 
-**Project:** Unity 6000.6.3f1, URP 17.6.0
+## Finding status
 
-This audit combines source inspection with a Bugbot functional review. It is not a target-hardware runtime certification. The benchmark sweep was not run, and the sample scene is not wired to the simulation components and materials.
+| Priority | Finding | Implementation status |
+|---|---|---|
+| P1 | The indirect argument buffer was missing `GraphicsBuffer.Target.Raw` while bound as HLSL `RWByteAddressBuffer`. | Fixed: allocates `IndirectArguments | Raw`, checks 4-byte stride and 16-byte/four-uint layout, initializes all fields, and resets the compute arguments at the start of each GPU frame. |
+| P2 | CPU frustum culling ran in a serial main-thread loop, benchmark timing hid its cost, and partitioned Burst writes violated Job Safety's default index restriction. | Fixed: Burst jobs cull, prefix, and scatter visible indices. `NativeDisableParallelForRestriction` is applied only to the scratch/output arrays whose disjoint ranges are established by the block prefix. Normal play polls the job and reuses the cached list while it is pending. Benchmark rows report integration-only and total CPU-step timing separately; the latter includes culling, uploads, and draw submission. |
+| P2 | CPU fallback still depended on indirect rendering. | Fixed: capability selection requires compute plus indirect support for the GPU backend. When indirect rendering is unavailable, the CPU path submits a direct procedural `Graphics.RenderPrimitives` draw. |
+| P2 | Draw bounds used a fixed radius. | Fixed: bounds use outer radius, disk half-thickness, particle size, and absolute lossy scale. CPU and GPU frustum tests also scale their particle margin. |
+| P2 | Failed or unsupported async GPU readback could be exported as a valid zero. | Fixed: readback errors and unsupported requests are labelled unavailable/failed, and the count is emitted as an em dash. |
+| P2 | Tests and benchmark code were not discoverable through Unity assemblies. | Fixed in source: benchmark code is part of the runtime asmdef; NUnit tests have `[Test]` attributes in an EditMode test asmdef; Editor menus invoke `TestRunnerApi` against that assembly. |
+| P3 | The checked-in SampleScene lacked a complete simulation setup. | Fixed and verified: the Editor menu creates/wires the camera, lights, URP feature, materials, simulation, compute shader, event horizon, and HUD, then saves SampleScene with both disk materials and compute/camera references serialized. GPUCompute Play Mode was visually captured; the horizon/ring are low contrast and the HUD overlaps the disk, so visual polish remains. |
+| P3 | The repository had no one-click CPU/GPU benchmark export or MIT license. | Implemented: the second Editor menu runs discovered EditMode tests, then a six-case CPU/GPU sweep and exports `Blackhole-Benchmark-Results.md` with processor/GPU names and explicit metric status. Root `LICENSE` contains MIT terms. The hardware sweep has not been run. |
 
-## Findings
+## Validation status
 
-| Priority | Location | Finding | Recommended follow-up |
-|---|---|---|---|
-| P1 | `Assets/Scripts/Blackhole/Rendering/AccretionDiskController.cs:65`; `Assets/Shaders/Blackhole/BlackholeGravity.compute:15` | The indirect-arguments buffer is created with `IndirectArguments` only, then bound to an HLSL `RWByteAddressBuffer`. Unity maps raw byte-address HLSL buffers to `GraphicsBuffer.Target.Raw`; the current target combination does not request that usage. | Allocate the argument buffer with both indirect-argument and raw targets, then validate the reset and atomic count writes on the supported graphics APIs. |
-| P2 | `Assets/Scripts/Blackhole/Systems/BlackholeSimulationController.cs:159-161`; `Assets/Scripts/Blackhole/Rendering/AccretionDiskController.cs:64-65,203` | The CPU backend still renders with `Graphics.RenderPrimitivesIndirect`. The backend selector falls back when compute or indirect-argument support is missing, while indirect primitive rendering itself requires compute-shader support. This does not provide rendering on every device selected for fallback. | Add a supported CPU rendering path or narrow the fallback claim and capability checks. |
-| P2 | `Assets/Scripts/Blackhole/Rendering/AccretionDiskController.cs:36,198` | Draw bounds use a fixed radius (default 30) and do not follow `settings.outerRadius`. Larger configured disks can be culled by Unity before their visible particles are drawn. | Derive the bounds from the outer radius, thickness, particle size, and black-hole transform, or validate the configured relationship. |
-| P2 | `Assets/Scripts/Blackhole/Benchmarking/BlackholeBenchmarkRecorder.cs:92-101` | If asynchronous GPU readback fails, the GPU row keeps the default visible count of zero and is still marked available. | Mark the count unavailable or fail the benchmark case when readback reports an error or is unsupported. |
-| P2 | `Assets/Tests/EditMode/BlackholeSimulationTests.cs`; `Assets/Editor/BlackholeSimulationTestRunner.cs`; `Assets/Scripts/Blackhole/Benchmarking/BlackholeBenchmarkRecorder.cs` | The checks are plain assertion methods without Unity Test Framework test attributes or a discoverable test assembly. In the live editor used for this audit, the test file, menu runner, and benchmark harness were absent from `CompilationPipeline.GetAssemblies()` source lists; the menu item was not registered and the test type was not loaded. | Repair asset/assembly inclusion and configure a supported test-discovery path, then confirm both checks and benchmark harness are present in the active editor assemblies. |
-| P3 | `Assets/Scenes/SampleScene.unity`; `README.md` | The checked-in sample scene is not a ready-to-play simulation. The README requires manual controller, compute shader, material, camera, and renderer-feature setup. | Wire a reproducible demo scene and capture a real Unity screenshot after the runtime path is verified. |
-| P3 | `Assets/Scripts/Blackhole/Rendering/AccretionDiskController.cs:117-146`; `Assets/Scripts/Blackhole/Systems/BlackholeSimulationController.cs:84-101` | CPU frustum culling is a serial main-thread loop after Burst integration. The reported CPU dispatch time measures job schedule plus completion, not that culling loop or the subsequent upload/draw submission. | Keep the frame-time column for whole-frame comparisons; label step time as integration-only or include culling and upload in the CPU measurement. |
+- `.cs` and `.asmdef` assets under `Assets` have matching `.meta` files.
+- Unity Editor `6000.6.3f1` reports compilation complete with `failed=false` and no current Console errors or warnings.
+- `Blackhole.Tests.EditMode` is discovered by Unity Test Runner and passed all 5 tests (0 failed, 0 skipped), both through the Test Runner command and **Tools > Blackhole Simulation > Run Edit Mode Verification**.
+- A 10,000-particle CPUBurstJobs Play Mode run completed culling with all particles visible and no current Job Safety/Console errors; the scene backend was restored to GPUCompute afterwards.
+- `Tools > Blackhole > 1. Wire & Save Demo SampleScene` ran successfully. The saved scene contains references to the procedural disk material, CPU fallback material, compute shader, render camera, simulation, and HUD.
+- GPUCompute + indirect draw rendered the 10,000-particle scene in Unity Game View without current Console errors or warnings. The full Editor capture is `docs/screenshots/blackhole-game-view-editor.jpg`.
+- No target-hardware benchmark values, GPU capture, or player-build result are claimed.
 
-## Validation evidence
+## Remaining verification
 
-- The source and HLSL paths are present, and a previous validation pass compiled the C# assemblies and shader stages directly.
-- The final live editor sample reported `compilationFailed: false` and `compiling: false`. Its `Assembly-CSharp` source list contained the core simulation and rendering scripts, but omitted the benchmark harness; `Assembly-CSharp-Editor` did not include the test-menu script. A standard Unity Test Runner run was not completed.
-- Unity logs contain earlier failed script-compilation attempts followed by successful Tundra builds. The successful editor status does not replace a clean project import and player build.
-- No scene playback, GPU capture, target-hardware benchmark, or measured performance result is claimed here.
+1. Run **Tools > Blackhole > 2. Run EditMode Checks & Export Benchmark Markdown** in the Editor when ready to capture machine-specific CPU/GPU timings. It starts Play Mode for the six-case benchmark and writes `Blackhole-Benchmark-Results.md` after completion.
 
-## Suggested fix order
-
-1. Make the argument buffer usable as both indirect arguments and raw byte-address storage; validate the GPU culling count.
-2. Make platform capability selection match the actual rendering path.
-3. Fix draw bounds and make GPU benchmark readback errors explicit.
-4. Restore test discovery and verify the assertions in Unity.
-5. Add a configured demo scene, then run the CPU/GPU sweep on named hardware and commit only measured results.
-
-Unity documents that [`GraphicsBuffer.Target.Raw`](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/GraphicsBuffer.Target.Raw.html) maps to `ByteAddressBuffer` and `RWByteAddressBuffer`. The [`Graphics.RenderPrimitivesIndirect`](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/Graphics.RenderPrimitivesIndirect.html) documentation also notes that the call requires compute-shader support.
+Unity documents [`GraphicsBuffer.Target.Raw`](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/GraphicsBuffer.Target.Raw.html) for byte-address HLSL buffers and notes that [`Graphics.RenderPrimitivesIndirect`](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/Graphics.RenderPrimitivesIndirect.html) requires compute-shader support.
