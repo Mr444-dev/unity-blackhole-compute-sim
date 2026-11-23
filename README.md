@@ -87,4 +87,4 @@ Assets/Tests/EditMode/                  EditMode verification checks
 Assets/Editor/                          scene setup, screenshot capture, and benchmark tools
 ```
 
-Original project code by Michał Rusinek (Mr444-dev) is distributed under the [MIT License](LICENSE).
+Original project code by Michał Rusinek (Mr444-dev) is not offered under an open-source license; all rights are reserved. See [LICENSE](LICENSE).
